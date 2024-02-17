@@ -1,0 +1,40 @@
+raft:
+  heartbeat-timeout: 3
+  vote-evaluate-timeout: 6
+
+network:
+  services:
+    -
+      id: 1
+      host: raft-server-1
+      port: 8081
+      version: v1
+    -
+      id: 2
+      host: raft-server-2
+      port: 8082
+      version: v1
+    -
+      id: 3
+      host: raft-server-3
+      port: 8083
+      version: v1
+    -
+      id: 4
+      host: raft-server-4
+      port: 8084
+      version: v1
+    -
+      id: 5
+      host: raft-server-5
+      port: 8085
+      version: v1
+    -
+      id: 6
+      host: raft-server-6
+      port: 8086
+      version: v1
+
+logging:
+  level:
+    com.pankovdv.raft:  DEBUG
