@@ -1,6 +1,6 @@
 raft:
-  heartbeat-timeout: 3
-  vote-evaluate-timeout: 6
+  heartbeat-timeout: 10
+  vote-evaluate-timeout: 20
 
 network:
   services:
@@ -33,6 +33,11 @@ network:
       id: 6
       host: raft-server-6
       port: 8086
+      version: v1
+    -
+      id: 7
+      host: gateway
+      port: 8090
       version: v1
 
 logging:

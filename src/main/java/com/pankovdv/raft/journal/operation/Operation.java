@@ -7,5 +7,5 @@ public class Operation {
 
     private final Long term;
     private final OperationType type;
-    private final String value;
+    private final Entry entry;
 }

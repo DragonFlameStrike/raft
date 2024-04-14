@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface Context {
     Integer getId();
-    Term getTerm();
+    Term getTermService();
     State getState();
     void setState(State state);
     Integer getVotedFor(); //Идентификатор узла за который был отдан голос в текущем раунде
@@ -17,4 +17,6 @@ public interface Context {
     Integer getCommitIndex();
     List<Neighbour> getNeighbours();
     void setTermGreaterThenCurrent(Long term);
+
+    void setCommitIndex(int n);
 }

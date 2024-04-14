@@ -1,6 +1,6 @@
 package com.pankovdv.raft.context;
 
-import com.pankovdv.raft.journal.Journal;
+import com.pankovdv.raft.journal.operation.OperationsLog;
 import com.pankovdv.raft.network.NetworkProperties;
 import com.pankovdv.raft.node.State;
 import com.pankovdv.raft.node.neighbour.Neighbour;
@@ -18,7 +18,7 @@ import java.util.List;
 public class ContextImpl implements Context {
 
     @Autowired
-    private Journal journal;
+    private OperationsLog journal;
 
     @Autowired
     private NetworkProperties networkProperties;
@@ -29,8 +29,11 @@ public class ContextImpl implements Context {
     volatile State currState;
     volatile Integer votedFor;
 
+    int commitIndex;
+
     public ContextImpl() {
         this.currState = State.FOLLOWER;
+        commitIndex = 0;
     }
 
     @Override
@@ -39,7 +42,7 @@ public class ContextImpl implements Context {
     }
 
     @Override
-    public Term getTerm() {
+    public Term getTermService() {
         return this.term;
     }
 
@@ -70,7 +73,7 @@ public class ContextImpl implements Context {
 
     @Override
     public Integer getCommitIndex() {
-        return journal.getLastIndex();
+        return commitIndex;
     }
 
     @Override
@@ -82,7 +85,13 @@ public class ContextImpl implements Context {
     public void setTermGreaterThenCurrent(Long term) {
         log.info("Node #{} Get term {} greater then current. The current term is {}", getId(), term, getCurrentJournalTerm());
         setState(State.FOLLOWER);
-        getTerm().setCurrentTerm(term, getId());
+        getTermService().setCurrentTerm(term, getId());
         setVotedFor(null);
+    }
+
+    @Override
+    public void setCommitIndex(int n) {
+        commitIndex = n;
+        log.info("Peer #{} New commit index: {}", getId(), commitIndex);
     }
 }

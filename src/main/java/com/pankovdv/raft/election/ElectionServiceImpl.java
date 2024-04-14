@@ -1,10 +1,9 @@
 package com.pankovdv.raft.election;
 
-import com.pankovdv.raft.MessageController;
 import com.pankovdv.raft.context.Context;
 import com.pankovdv.raft.election.dto.ElectionRequestDto;
 import com.pankovdv.raft.election.dto.ElectionResponseDto;
-import com.pankovdv.raft.journal.Journal;
+import com.pankovdv.raft.journal.operation.OperationsLog;
 import com.pankovdv.raft.network.NetworkProperties;
 import com.pankovdv.raft.network.RestService;
 import com.pankovdv.raft.node.State;
@@ -17,7 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -33,7 +31,7 @@ public class ElectionServiceImpl implements ElectionService {
     @Autowired
     private NetworkProperties networkProperties;
     @Autowired
-    private Journal journal;
+    private OperationsLog journal;
     @Autowired
     private NeighbourService neighbourService;
 
@@ -42,7 +40,7 @@ public class ElectionServiceImpl implements ElectionService {
         Integer candidateId = context.getId();
         log.info("Node #{} Start election", candidateId);
         context.setState(State.CANDIDATE);
-        Long term = context.getTerm().incCurrentTerm(candidateId);
+        Long term = context.getTermService().incCurrentTerm(candidateId);
         context.setVotedFor(candidateId);
 
         Neighbours neighbours = neighbourService.getNeighbours();
@@ -68,7 +66,7 @@ public class ElectionServiceImpl implements ElectionService {
                 if (resp == null) {
                     break;
                 }
-                if (resp.getTerm() > context.getTerm().getCurrentTerm()) {
+                if (resp.getTerm() > context.getTermService().getCurrentTerm()) {
                     context.setTermGreaterThenCurrent(resp.getTerm());
                     return false;
                 }
@@ -152,18 +150,18 @@ public class ElectionServiceImpl implements ElectionService {
                 context.getId(),
                 request.getCandidateId(),
                 request.getTerm(),
-                context.getTerm().getCurrentTerm(),
+                context.getTermService().getCurrentTerm(),
                 context.getVotedFor());
 
         boolean termCheck = false;
-        if (request.getTerm() < context.getTerm().getCurrentTerm()) {
-            return ElectionResponseDto.builder().voteGranted(false).id(context.getId()).term(context.getTerm().getCurrentTerm()).build();
+        if (request.getTerm() < context.getTermService().getCurrentTerm()) {
+            return ElectionResponseDto.builder().voteGranted(false).id(context.getId()).term(context.getTermService().getCurrentTerm()).build();
         }
 
-        if (request.getTerm().equals(context.getTerm().getCurrentTerm())) {
+        if (request.getTerm().equals(context.getTermService().getCurrentTerm())) {
             termCheck = (context.getVotedFor() == null || context.getVotedFor().equals(request.getCandidateId()));
         }
-        if (request.getTerm() > context.getTerm().getCurrentTerm()) {
+        if (request.getTerm() > context.getTermService().getCurrentTerm()) {
             termCheck = true;
             context.setTermGreaterThenCurrent(request.getTerm());
         }
@@ -180,6 +178,6 @@ public class ElectionServiceImpl implements ElectionService {
         } else {
             log.info("Node #{} Reject vote for {}", context.getId(), request.getCandidateId());
         }
-        return ElectionResponseDto.builder().voteGranted(voteGranted).id(context.getId()).term(context.getTerm().getCurrentTerm()).build();
+        return ElectionResponseDto.builder().voteGranted(voteGranted).id(context.getId()).term(context.getTermService().getCurrentTerm()).build();
     }
 }
