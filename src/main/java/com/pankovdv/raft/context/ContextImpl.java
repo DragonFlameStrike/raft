@@ -1,6 +1,7 @@
 package com.pankovdv.raft.context;
 
 import com.pankovdv.raft.journal.operation.OperationsLog;
+import com.pankovdv.raft.journal.storage.StorageService;
 import com.pankovdv.raft.network.NetworkProperties;
 import com.pankovdv.raft.node.State;
 import com.pankovdv.raft.node.neighbour.Neighbour;
@@ -33,7 +34,7 @@ public class ContextImpl implements Context {
 
     public ContextImpl() {
         this.currState = State.FOLLOWER;
-        commitIndex = 0;
+        commitIndex = -1;
     }
 
     @Override

@@ -19,7 +19,7 @@ class StorageServiceImpl implements StorageService {
     private final OperationsLog operationsLog;
     private final Context context;
 
-    public Integer lastApplied;
+    public Integer lastApplied = -1;
 
     @Override
     public String get(Integer id) {
@@ -46,17 +46,10 @@ class StorageServiceImpl implements StorageService {
         log.info("Peer #{} Apply operation to storage: {} key: {} value: {} ", context.getId(), operation.getType(), entry.getKey(), entry.getVal());
 
         switch (operation.getType()) {
-            case INSERT:
-                storage.insert(entry.getKey(), entry.getVal());
-                break;
-            case UPDATE:
-                storage.update(entry.getKey(), entry.getVal());
-                break;
-            case DELETE:
-                storage.delete(entry.getKey());
-                break;
-            default:
-                throw new RuntimeException("Unsupported operation");
+            case INSERT -> storage.insert(entry.getKey(), entry.getVal());
+            case UPDATE -> storage.update(entry.getKey(), entry.getVal());
+            case DELETE -> storage.delete(entry.getKey());
+            default -> throw new RuntimeException("Unsupported operation");
         }
         lastApplied++;
     }

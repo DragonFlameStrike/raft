@@ -3,6 +3,7 @@ package com.pankovdv.raft.replication;
 import com.pankovdv.raft.context.Context;
 import com.pankovdv.raft.journal.operation.Operation;
 import com.pankovdv.raft.journal.operation.OperationsLog;
+import com.pankovdv.raft.journal.storage.StorageService;
 import com.pankovdv.raft.network.NetworkProperties;
 import com.pankovdv.raft.network.RestService;
 import com.pankovdv.raft.node.State;
@@ -40,6 +41,10 @@ public class ReplicationServiceImpl implements ReplicationService {
     @Autowired
     private NeighbourService neighbourService;
 
+    @Autowired
+    private StorageService storageService;
+
+
     @Override
     public ReplicationResponseDto append(ReplicationRequestDto dto) {
         // Invoked by leader to replicate operations entries (§5.3); also used as heartbeat (§5.2).
@@ -51,7 +56,7 @@ public class ReplicationServiceImpl implements ReplicationService {
             return new ReplicationResponseDto(context.getId(), context.getTermService().getCurrentTerm(), false, null);
         } else if (dto.getTerm() > context.getTermService().getCurrentTerm()) {
             //If RPC request or response contains term T > currentTerm: set currentTerm = T,
-            context.getTermService().setCurrentTerm(dto.getTerm(),context.getId());
+            context.getTermService().setCurrentTerm(dto.getTerm(), context.getId());
             context.setVotedFor(null);
         }
         // convert to follower. Just one Leader RULE
@@ -84,28 +89,30 @@ public class ReplicationServiceImpl implements ReplicationService {
 //              delete the existing entry and all that follow it (§5.3)
                 if ((newOperationIndex <= operationsLog.getLastIndex()) &&
                         (!newOperation.getTerm().equals(operationsLog.getTerm(newOperationIndex)))) {
+                    log.info("append case #3");
                     operationsLog.removeAllFromIndex(newOperationIndex);
                 }
 //        4. Append any new entries not already in the operations
-                if (newOperationIndex <= operationsLog.getLastIndex())
-                {
-                    //don't need to append
-                    return new ReplicationResponseDto(context.getId(), context.getTermService().getCurrentTerm(), true, operationsLog.getLastIndex());
+                if (newOperationIndex <= operationsLog.getLastIndex()) {
+                    log.info("append case #4 - don't need to append");
+                } else {
+                    log.info("Peer #{} Append new operation. {}. key:{} val:{}",
+                            context.getId(), newOperation.getType(), newOperation.getEntry().getKey(),
+                            newOperation.getEntry().getVal());
+                    operationsLog.append(newOperation);
                 }
-                log.info("Peer #{} Append new operation. {}. key:{} val:{}",
-                        context.getId(), newOperation.getType(), newOperation.getEntry().getKey(),
-                        newOperation.getEntry().getVal());
-                operationsLog.append(newOperation);
             }
         }
 //        5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
         if (dto.getLeaderCommit() > context.getCommitIndex()) {
+            log.info("append case #5");
             context.setCommitIndex(Math.min(dto.getLeaderCommit(), operationsLog.getLastIndex()));
+            storageService.applyCommitted();
         }
 
-        log.debug("Peer #{}. Success answer to {} request. Term: {}. Mach index {}", context.getId(), opNameForLog,
+        log.debug("Peer #{}. Success answer to {} request. Term: {}. Last index {}", context.getId(), opNameForLog,
                 context.getTermService().getCurrentTerm(), operationsLog.getLastIndex());
-        return new ReplicationResponseDto(context.getId(),  context.getTermService().getCurrentTerm(), true, operationsLog.getLastIndex());
+        return new ReplicationResponseDto(context.getId(), context.getTermService().getCurrentTerm(), true, operationsLog.getLastIndex());
     }
 
     @Override
@@ -141,7 +148,7 @@ public class ReplicationServiceImpl implements ReplicationService {
 //        of matchIndex[i] ≥ N, and operations[N].term == currentTerm:
 //        set commitIndex = N (§5.3, §5.4).
 
-        log.debug("Peer #{} trying to commit operations. Current commit index {}", context.getId(),
+        log.debug("Node #{} trying to commit operations. Current commit index {}", context.getId(),
                 context.getCommitIndex());
 
         var neighbours = neighbourService.getNeighbours();
@@ -154,17 +161,25 @@ public class ReplicationServiceImpl implements ReplicationService {
             int N = context.getCommitIndex() + 1;
 
             Supplier<Long> count = () ->
-                    neighbourIndexes.stream().filter(matchIndex -> matchIndex >= N).count() + 1;
+                    neighbourIndexes.stream().filter(lastIndex -> lastIndex >= N).count() + 1;
 
+            log.info("LEADER tryToCommit: N = {}, neighbourIndexes = {}, count = {}; firstMatch = {}, secondMatch = {}, Quorum = {},",
+                    N, neighbourIndexes, count,
+                    operationsLog.getLastIndex() >= N,
+                    operationsLog.getTerm(N).equals(context.getTermService().getCurrentTerm()),
+                    count.get() >= neighbours.getQuorum()
+            );
 
             if (operationsLog.getLastIndex() >= N &&
-                    operationsLog.getTerm(N).equals(context.getTermService().getCurrentTerm())&&
-                    count.get()>= neighbours.getQuorum()
-            )
-            {
+                    operationsLog.getTerm(N).equals(context.getTermService().getCurrentTerm()) &&
+                    count.get() >= neighbours.getQuorum()
+            ) {
                 context.setCommitIndex(N);
+                storageService.applyCommitted();
+                log.info("committed success");
             } else
-                return;
+                log.info("committed error");
+            return;
         }
     }
 
@@ -174,7 +189,10 @@ public class ReplicationServiceImpl implements ReplicationService {
         List<CompletableFuture<ReplicationResponseDto>> answerFutureList = new ArrayList<>();
 
         for (Neighbour neighbour : neighbours.getNeighbours()) {
-            answerFutureList.add(sendAppendForOnePeer(neighbour));
+            var result = sendAppendForOnePeer(neighbour);
+            if (result != null) {
+                answerFutureList.add(result);
+            }
         }
 
         return CompletableFuture.allOf(answerFutureList.toArray(new CompletableFuture[0]))
@@ -186,7 +204,7 @@ public class ReplicationServiceImpl implements ReplicationService {
 
     private CompletableFuture<ReplicationResponseDto> sendAppendForOnePeer(Neighbour neighbour) {
         var replicationUrl = restService.buildUrl(neighbour.getPort(), "/api/v1/replication");
-        Integer nextCommitNeighbourIndex = getLastNeighbourIndex(neighbour);
+        int nextCommitNeighbourIndex = getLastNeighbourIndex(neighbour) + 1;
         if (nextCommitNeighbourIndex == -1) return null;
 
         return CompletableFuture.supplyAsync(() -> {
@@ -199,7 +217,7 @@ public class ReplicationServiceImpl implements ReplicationService {
                         context.getId(), neighbour.getId(), nextCommitNeighbourIndex, operationsLog.getLastIndex());
 
                 operation = operationsLog.get(nextCommitNeighbourIndex);
-                prevIndex = nextCommitNeighbourIndex-1;
+                prevIndex = nextCommitNeighbourIndex - 1;
             }
             //Negative
             else {
@@ -212,6 +230,7 @@ public class ReplicationServiceImpl implements ReplicationService {
             var response = restService.sendPostRequest(replicationUrl, request, ReplicationResponseDto.class);
             if (response == null) {
                 log.info("ДОПИСАТЬ ОБРАБОТКУ ОШИБКИ");
+                neighbourService.updateNeighbours();
                 return null;
             }
             return response.getBody();
@@ -223,7 +242,7 @@ public class ReplicationServiceImpl implements ReplicationService {
         String lastNeighbourIndexString = restService.sendGetRequest(getLastIndexUrl);
         if (lastNeighbourIndexString == null) {
             log.info("ДОПИСАТЬ ОБРАБОТКУ ОШИБКИ");
-            return -1;
+            return -2;
         }
         return Integer.parseInt(lastNeighbourIndexString);
     }

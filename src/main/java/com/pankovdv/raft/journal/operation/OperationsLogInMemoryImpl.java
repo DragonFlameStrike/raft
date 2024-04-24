@@ -59,7 +59,7 @@ class OperationsLogInMemoryImpl implements OperationsLog {
 
     @Override
     public Long getTerm(Integer index) {
-        if (index > EMPTY_LOG_LAST_INDEX) {
+        if (index > EMPTY_LOG_LAST_INDEX && operationsLog.size() > index) {
             return operationsLog.get(index).getTerm();
         } else
             return 0L;

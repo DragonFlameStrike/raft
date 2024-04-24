@@ -49,8 +49,10 @@ public abstract class CustomTimer {
             public void run() {
                 if (isRun()) {
                     counter.incrementAndGet();
-                    log.debug("Node #{} Time to next {}: {} sec", context.getId(), getActionName(), getTimeout() - counter.get());
                     if (counter.get() >= getTimeout()) {
+                        log.info("");
+                        log.info("");
+                        log.debug("Node #{} Time to next {}: {} sec", context.getId(), getActionName(), getTimeout() - counter.get());
                         counter.set(0);
                         getAction().run();
                     }
